@@ -4,3 +4,4 @@ python-dotenv
 streamlit-mic-recorder
 gtts
 bcrypt
+openai
