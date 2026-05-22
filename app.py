@@ -1,10 +1,10 @@
 import os
+import tempfile
 import streamlit as st
 from groq import Groq
+from openai import OpenAI
 from dotenv import load_dotenv
 from streamlit_mic_recorder import mic_recorder
-import tempfile
-from openai import OpenAI
 from gtts import gTTS
 
 # Components
@@ -24,13 +24,13 @@ load_dotenv()
 # ==============================
 
 st.set_page_config(
-    page_title="🎤 Voice AI Assistant",
-    page_icon="🤖",
+    page_title="Voice AI Assistant",
+    page_icon="🎤",
     layout="wide"
 )
 
 # ==============================
-# LOGIN SYSTEM
+# LOGIN
 # ==============================
 
 if "logged_in" not in st.session_state:
@@ -42,30 +42,30 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==============================
-# SIDEBAR SETTINGS
+# SETTINGS
 # ==============================
 
 model, temperature, dark_mode = sidebar_settings()
 
 # ==============================
-# DARK MODE
+# THEME
 # ==============================
 
 if dark_mode:
-    bg_color = "#0E1117"
-    text_color = "white"
+    bg = "#0E1117"
+    text = "white"
     chat_bg = "#1E1E1E"
 else:
-    bg_color = "#FFFFFF"
-    text_color = "black"
+    bg = "white"
+    text = "black"
     chat_bg = "#F1F1F1"
 
 st.markdown(f"""
 <style>
 
 .stApp {{
-    background-color: {bg_color};
-    color: {text_color};
+    background-color: {bg};
+    color: {text};
 }}
 
 .chat-box {{
@@ -91,41 +91,43 @@ st.markdown(f"""
 # ==============================
 
 st.title("🎤 Voice AI Assistant")
-st.write("Powered by Groq + Streamlit")
+st.write("Groq + Whisper + Streamlit")
 
 # ==============================
-# GROQ CLIENT
+# API CLIENTS
 # ==============================
 
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("GROQ_API_KEY not found")
+    st.error("Missing GROQ_API_KEY")
     st.stop()
 
 client = Groq(api_key=groq_api_key)
 
+whisper_client = OpenAI(
+    api_key=groq_api_key,
+    base_url="https://api.groq.com/openai/v1"
+)
+
 # ==============================
-# SESSION STATE
+# SESSION
 # ==============================
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-if "voice_prompt" not in st.session_state:
-    st.session_state.voice_prompt = ""
-
 # ==============================
-# DISPLAY CHAT HISTORY
+# DISPLAY CHATS
 # ==============================
 
-for message in st.session_state.messages:
+for msg in st.session_state.messages:
 
-    role = "🧑 You" if message["role"] == "user" else "🤖 AI"
+    role = "🧑 You" if msg["role"] == "user" else "🤖 AI"
 
     css_class = (
         "user-chat"
-        if message["role"] == "user"
+        if msg["role"] == "user"
         else "ai-chat"
     )
 
@@ -133,14 +135,14 @@ for message in st.session_state.messages:
         f"""
         <div class="chat-box {css_class}">
             <b>{role}:</b><br>
-            {message["content"]}
+            {msg["content"]}
         </div>
         """,
         unsafe_allow_html=True
     )
 
 # ==============================
-# VOICE ASSISTANT
+# VOICE RECORDING
 # ==============================
 
 st.subheader("🎙 Voice Assistant")
@@ -150,46 +152,48 @@ audio = mic_recorder(
     stop_prompt="⏹ Stop Recording",
     just_once=True,
     use_container_width=True,
-    key="voice-recorder"
+    key="voice"
 )
 
 voice_text = None
+
+# ==============================
+# SPEECH TO TEXT
+# ==============================
 
 if audio:
 
     try:
 
-        # Save audio temporarily
+        audio_bytes = audio["bytes"]
+
+        # Save as webm
         with tempfile.NamedTemporaryFile(
             delete=False,
-            suffix=".wav"
+            suffix=".webm"
         ) as temp_audio:
 
-            temp_audio.write(audio["bytes"])
+            temp_audio.write(audio_bytes)
 
             temp_audio_path = temp_audio.name
 
-        # Groq Whisper Client
-        whisper_client = OpenAI(
-            api_key=os.getenv("GROQ_API_KEY"),
-            base_url="https://api.groq.com/openai/v1"
-        )
+        # Transcribe using Groq Whisper
+        with open(temp_audio_path, "rb") as audio_file:
 
-        # Speech To Text
-        with open(temp_audio_path, "rb") as file:
-
-            transcription = whisper_client.audio.transcriptions.create(
-                file=file,
-                model="whisper-large-v3"
+            transcript = whisper_client.audio.transcriptions.create(
+                file=("audio.webm", audio_file, "audio/webm"),
+                model="whisper-large-v3",
+                response_format="json"
             )
 
-        voice_text = transcription.text
+        voice_text = transcript.text
 
         st.success(f"🗣 You Said: {voice_text}")
 
     except Exception as e:
 
-        st.error(f"Voice Error: {e}")
+        st.error(f"Speech Conversion Error: {e}")
+
 # ==============================
 # TEXT INPUT
 # ==============================
@@ -200,21 +204,13 @@ text_input = st.chat_input("Type your message...")
 # FINAL INPUT
 # ==============================
 
-user_input = None
+user_input = text_input
 
-# Text input priority
-if text_input:
-    user_input = text_input
-
-# Voice button
-if st.button("🚀 Send Voice Message"):
-
-    if st.session_state.voice_prompt:
-
-        user_input = st.session_state.voice_prompt
+if voice_text:
+    user_input = voice_text
 
 # ==============================
-# PROCESS CHAT
+# AI CHAT
 # ==============================
 
 if user_input:
@@ -227,7 +223,6 @@ if user_input:
 
     save_chat("user", user_input)
 
-    # Show user message
     st.markdown(
         f"""
         <div class="chat-box user-chat">
@@ -238,83 +233,67 @@ if user_input:
         unsafe_allow_html=True
     )
 
+    # AI Response
+    with st.spinner("🤖 Thinking..."):
+
+        response = client.chat.completions.create(
+            model=model,
+            temperature=temperature,
+            messages=st.session_state.messages,
+            stream=True
+        )
+
+        full_response = ""
+
+        placeholder = st.empty()
+
+        for chunk in response:
+
+            if chunk.choices[0].delta.content:
+
+                full_response += chunk.choices[0].delta.content
+
+                placeholder.markdown(
+                    f"""
+                    <div class="chat-box ai-chat">
+                        <b>🤖 AI:</b><br>
+                        {full_response}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    # Save AI response
+    st.session_state.messages.append({
+        "role": "assistant",
+        "content": full_response
+    })
+
+    save_chat("assistant", full_response)
+
     # ==============================
-    # AI RESPONSE
+    # AI VOICE OUTPUT
     # ==============================
 
-    with st.spinner("🤖 AI is thinking..."):
+    try:
 
-        try:
+        tts = gTTS(
+            text=full_response,
+            lang="en"
+        )
 
-            response = client.chat.completions.create(
-                model=model,
-                temperature=temperature,
-                messages=st.session_state.messages,
-                stream=True
-            )
+        tts.save("response.mp3")
 
-            full_response = ""
+        audio_file = open("response.mp3", "rb")
 
-            response_placeholder = st.empty()
+        st.audio(
+            audio_file.read(),
+            format="audio/mp3"
+        )
 
-            for chunk in response:
+    except Exception as e:
 
-                if chunk.choices[0].delta.content:
-
-                    full_response += chunk.choices[0].delta.content
-
-                    response_placeholder.markdown(
-                        f"""
-                        <div class="chat-box ai-chat">
-                            <b>🤖 AI:</b><br>
-                            {full_response}
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-
-            # Save AI message
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": full_response
-            })
-
-            save_chat("assistant", full_response)
-
-            # ==============================
-            # AI VOICE OUTPUT
-            # ==============================
-
-            try:
-
-                tts = gTTS(
-                    text=full_response,
-                    lang='en'
-                )
-
-                tts.save("response.mp3")
-
-                audio_file = open(
-                    "response.mp3",
-                    "rb"
-                )
-
-                st.audio(
-                    audio_file.read(),
-                    format="audio/mp3"
-                )
-
-            except Exception as audio_error:
-
-                st.warning(
-                    f"Voice Output Error: {audio_error}"
-                )
-
-        except Exception as e:
-
-            st.error(
-                f"AI Error: {e}"
-            )
+        st.warning(f"Voice Output Error: {e}")
 
 # ==============================
 # EXPORT CHAT
