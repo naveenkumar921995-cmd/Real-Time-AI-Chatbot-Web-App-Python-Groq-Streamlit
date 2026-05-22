@@ -1,6 +1,16 @@
-import sqlite3
+# ==============================
+# components/database.py
+# ==============================
 
-conn = sqlite3.connect("data/chats.db")
+import sqlite3
+import os
+
+os.makedirs("data", exist_ok=True)
+
+conn = sqlite3.connect(
+    "data/chats.db",
+    check_same_thread=False
+)
 
 cursor = conn.cursor()
 
