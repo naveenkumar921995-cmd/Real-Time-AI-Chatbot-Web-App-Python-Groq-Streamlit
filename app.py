@@ -1,7 +1,3 @@
-# ==============================
-# app.py
-# ==============================
-
 import os
 import streamlit as st
 from groq import Groq
@@ -16,7 +12,7 @@ from components.database import save_chat
 from components.export_chat import export_chat
 
 # ==============================
-# LOAD ENV VARIABLES
+# LOAD ENV
 # ==============================
 
 load_dotenv()
@@ -50,7 +46,7 @@ if not st.session_state.logged_in:
 model, temperature, dark_mode = sidebar_settings()
 
 # ==============================
-# DARK / LIGHT MODE
+# DARK MODE
 # ==============================
 
 if dark_mode:
@@ -102,7 +98,7 @@ st.write("Powered by Groq + Streamlit")
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("❌ GROQ_API_KEY not found")
+    st.error("GROQ_API_KEY not found")
     st.stop()
 
 client = Groq(api_key=groq_api_key)
@@ -114,41 +110,38 @@ client = Groq(api_key=groq_api_key)
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "voice_prompt" not in st.session_state:
+    st.session_state.voice_prompt = ""
+
 # ==============================
 # DISPLAY CHAT HISTORY
 # ==============================
 
 for message in st.session_state.messages:
 
-    if message["role"] == "user":
+    role = "🧑 You" if message["role"] == "user" else "🤖 AI"
 
-        st.markdown(
-            f"""
-            <div class="chat-box user-chat">
-                <b>🧑 You:</b><br>
-                {message["content"]}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    css_class = (
+        "user-chat"
+        if message["role"] == "user"
+        else "ai-chat"
+    )
 
-    else:
-
-        st.markdown(
-            f"""
-            <div class="chat-box ai-chat">
-                <b>🤖 AI:</b><br>
-                {message["content"]}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        f"""
+        <div class="chat-box {css_class}">
+            <b>{role}:</b><br>
+            {message["content"]}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 # ==============================
-# VOICE INPUT
+# VOICE ASSISTANT
 # ==============================
 
-st.subheader("🎙 Speak with AI")
+st.subheader("🎙 Voice Assistant")
 
 voice_text = speech_to_text(
     language='en',
@@ -159,6 +152,11 @@ voice_text = speech_to_text(
     key='voice-input'
 )
 
+# Save Voice Text
+if voice_text:
+    st.session_state.voice_prompt = voice_text
+    st.success(f"🗣 You Said: {voice_text}")
+
 # ==============================
 # TEXT INPUT
 # ==============================
@@ -166,22 +164,21 @@ voice_text = speech_to_text(
 text_input = st.chat_input("Type your message...")
 
 # ==============================
-# HANDLE INPUT
+# FINAL INPUT
 # ==============================
 
 user_input = None
 
-# Voice Input Priority
-if voice_text:
-
-    user_input = voice_text
-
-    st.success(f"🗣 You Said: {voice_text}")
-
-# Text Input
-elif text_input:
-
+# Text input priority
+if text_input:
     user_input = text_input
+
+# Voice button
+if st.button("🚀 Send Voice Message"):
+
+    if st.session_state.voice_prompt:
+
+        user_input = st.session_state.voice_prompt
 
 # ==============================
 # PROCESS CHAT
@@ -189,15 +186,7 @@ elif text_input:
 
 if user_input:
 
-    # Prevent duplicate reruns
-    if (
-        len(st.session_state.messages) > 0
-        and st.session_state.messages[-1]["role"] == "user"
-        and st.session_state.messages[-1]["content"] == user_input
-    ):
-        st.stop()
-
-    # Save User Message
+    # Save user message
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
@@ -205,7 +194,7 @@ if user_input:
 
     save_chat("user", user_input)
 
-    # Display User Message
+    # Show user message
     st.markdown(
         f"""
         <div class="chat-box user-chat">
@@ -251,7 +240,7 @@ if user_input:
                         unsafe_allow_html=True
                     )
 
-            # Save AI Response
+            # Save AI message
             st.session_state.messages.append({
                 "role": "assistant",
                 "content": full_response
@@ -260,7 +249,7 @@ if user_input:
             save_chat("assistant", full_response)
 
             # ==============================
-            # TEXT TO SPEECH
+            # AI VOICE OUTPUT
             # ==============================
 
             try:
@@ -272,13 +261,13 @@ if user_input:
 
                 tts.save("response.mp3")
 
-                audio_bytes = open(
+                audio_file = open(
                     "response.mp3",
                     "rb"
-                ).read()
+                )
 
                 st.audio(
-                    audio_bytes,
+                    audio_file.read(),
                     format="audio/mp3"
                 )
 
@@ -291,7 +280,7 @@ if user_input:
         except Exception as e:
 
             st.error(
-                f"AI Response Error: {e}"
+                f"AI Error: {e}"
             )
 
 # ==============================
