@@ -2,7 +2,9 @@ import streamlit as st
 from groq import Groq
 import os
 from dotenv import load_dotenv
+from streamlit_mic_recorder import mic_recorder
 import speech_recognition as sr
+from gtts import gTTS
 import tempfile
 
 # Components
@@ -22,8 +24,8 @@ load_dotenv()
 # =========================
 
 st.set_page_config(
-    page_title="Advanced AI Chatbot",
-    page_icon="🤖",
+    page_title="Voice AI Assistant",
+    page_icon="🎤",
     layout="wide"
 )
 
@@ -40,13 +42,13 @@ if not st.session_state.logged_in:
     st.stop()
 
 # =========================
-# SIDEBAR
+# SETTINGS
 # =========================
 
 model, temperature, dark_mode = sidebar_settings()
 
 # =========================
-# DARK MODE
+# THEME
 # =========================
 
 if dark_mode:
@@ -58,10 +60,12 @@ else:
 
 st.markdown(f"""
 <style>
+
 .stApp {{
     background-color: {bg};
     color: {text};
 }}
+
 .chat-box {{
     padding: 15px;
     border-radius: 10px;
@@ -69,6 +73,7 @@ st.markdown(f"""
     background-color: #1E1E1E;
     color: white;
 }}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -76,106 +81,94 @@ st.markdown(f"""
 # TITLE
 # =========================
 
-st.title("🤖 Advanced AI Chatbot")
+st.title("🎤 Voice AI Assistant")
 
 # =========================
 # GROQ CLIENT
 # =========================
 
-groq_api_key = os.getenv("GROQ_API_KEY")
-
-client = Groq(api_key=groq_api_key)
+client = Groq(
+    api_key=os.getenv("GROQ_API_KEY")
+)
 
 # =========================
-# SESSION STATE
+# CHAT MEMORY
 # =========================
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # =========================
-# FILE UPLOAD
+# DISPLAY CHATS
 # =========================
 
-uploaded_file = st.file_uploader(
-    "📂 Upload Text File",
-    type=["txt"]
-)
+for msg in st.session_state.messages:
 
-if uploaded_file:
-
-    file_text = uploaded_file.read().decode("utf-8")
-
-    st.success("File Uploaded Successfully")
-
-    st.text_area(
-        "📄 File Content",
-        file_text,
-        height=200
-    )
-
-# =========================
-# VOICE INPUT
-# =========================
-
-audio_file = st.file_uploader(
-    "🎤 Upload Voice File",
-    type=["wav"]
-)
-
-voice_text = ""
-
-if audio_file:
-
-    recognizer = sr.Recognizer()
-
-    with tempfile.NamedTemporaryFile(delete=False) as temp_audio:
-
-        temp_audio.write(audio_file.read())
-
-        temp_audio_path = temp_audio.name
-
-    with sr.AudioFile(temp_audio_path) as source:
-
-        audio_data = recognizer.record(source)
-
-        try:
-            voice_text = recognizer.recognize_google(audio_data)
-
-            st.success("Voice Converted to Text")
-
-            st.write(voice_text)
-
-        except:
-            st.error("Could not recognize voice")
-
-# =========================
-# DISPLAY CHAT
-# =========================
-
-for message in st.session_state.messages:
-
-    role = "🧑 You" if message["role"] == "user" else "🤖 AI"
+    role = "🧑 You" if msg["role"] == "user" else "🤖 AI"
 
     st.markdown(
         f"""
         <div class="chat-box">
         <b>{role}:</b><br>
-        {message["content"]}
+        {msg["content"]}
         </div>
         """,
         unsafe_allow_html=True
     )
 
 # =========================
-# USER INPUT
+# LIVE MIC INPUT
 # =========================
 
-user_input = st.chat_input("Type your message...")
+st.subheader("🎤 Speak with AI")
 
-# Voice input priority
-if voice_text:
-    user_input = voice_text
+audio = mic_recorder(
+    start_prompt="🎙 Start Recording",
+    stop_prompt="⏹ Stop Recording",
+    just_once=True,
+    use_container_width=True,
+    key="voice"
+)
+
+voice_text = ""
+
+# =========================
+# SPEECH TO TEXT
+# =========================
+
+if audio:
+
+    recognizer = sr.Recognizer()
+
+    audio_bytes = audio["bytes"]
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio:
+
+        temp_audio.write(audio_bytes)
+
+        temp_audio_path = temp_audio.name
+
+    try:
+
+        with sr.AudioFile(temp_audio_path) as source:
+
+            audio_data = recognizer.record(source)
+
+            voice_text = recognizer.recognize_google(audio_data)
+
+            st.success(f"🗣 You Said: {voice_text}")
+
+    except Exception as e:
+
+        st.error(f"Speech Recognition Error: {e}")
+
+# =========================
+# TEXT INPUT
+# =========================
+
+text_input = st.chat_input("Type message...")
+
+user_input = voice_text if voice_text else text_input
 
 # =========================
 # AI RESPONSE
@@ -190,7 +183,7 @@ if user_input:
 
     save_chat("user", user_input)
 
-    with st.spinner("🤖 Thinking..."):
+    with st.spinner("🤖 AI Thinking..."):
 
         response = client.chat.completions.create(
             model=model,
@@ -201,7 +194,7 @@ if user_input:
 
         full_response = ""
 
-        response_placeholder = st.empty()
+        placeholder = st.empty()
 
         for chunk in response:
 
@@ -209,7 +202,7 @@ if user_input:
 
                 full_response += chunk.choices[0].delta.content
 
-                response_placeholder.markdown(
+                placeholder.markdown(
                     f"""
                     <div class="chat-box">
                     <b>🤖 AI:</b><br>
@@ -219,12 +212,25 @@ if user_input:
                     unsafe_allow_html=True
                 )
 
+    # Save Response
     st.session_state.messages.append({
         "role": "assistant",
         "content": full_response
     })
 
     save_chat("assistant", full_response)
+
+    # =========================
+    # TEXT TO SPEECH
+    # =========================
+
+    tts = gTTS(full_response)
+
+    tts.save("response.mp3")
+
+    audio_file = open("response.mp3", "rb")
+
+    st.audio(audio_file.read(), format="audio/mp3")
 
 # =========================
 # EXPORT CHAT
