@@ -2,6 +2,7 @@ streamlit
 groq
 openai
 python-dotenv
-streamlit-mic-recorder
+streamlit-webrtc
+av
 gtts
 bcrypt
