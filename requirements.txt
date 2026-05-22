@@ -1,13 +1,6 @@
-# ==============================
-# requirements.txt
-# ==============================
-
 streamlit
 groq
 python-dotenv
-streamlit-option-menu
-streamlit-mic-recorder
-gtts
 SpeechRecognition
 pydub
 bcrypt
