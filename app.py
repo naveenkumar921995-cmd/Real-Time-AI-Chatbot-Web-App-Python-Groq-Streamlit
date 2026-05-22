@@ -2,7 +2,9 @@ import os
 import streamlit as st
 from groq import Groq
 from dotenv import load_dotenv
-from streamlit_mic_recorder import speech_to_text
+from streamlit_mic_recorder import mic_recorder
+import tempfile
+from openai import OpenAI
 from gtts import gTTS
 
 # Components
