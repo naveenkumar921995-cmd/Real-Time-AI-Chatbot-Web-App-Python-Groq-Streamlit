@@ -1,3 +1,7 @@
+# ==============================
+# app.py
+# ==============================
+
 import os
 import tempfile
 import streamlit as st
@@ -24,13 +28,13 @@ load_dotenv()
 # ==============================
 
 st.set_page_config(
-    page_title="Voice AI Assistant",
-    page_icon="🎤",
+    page_title="🎤 Voice AI Assistant",
+    page_icon="🤖",
     layout="wide"
 )
 
 # ==============================
-# LOGIN
+# LOGIN SYSTEM
 # ==============================
 
 if "logged_in" not in st.session_state:
@@ -42,30 +46,30 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ==============================
-# SETTINGS
+# SIDEBAR SETTINGS
 # ==============================
 
 model, temperature, dark_mode = sidebar_settings()
 
 # ==============================
-# THEME
+# DARK / LIGHT MODE
 # ==============================
 
 if dark_mode:
-    bg = "#0E1117"
-    text = "white"
+    bg_color = "#0E1117"
+    text_color = "white"
     chat_bg = "#1E1E1E"
 else:
-    bg = "white"
-    text = "black"
+    bg_color = "#FFFFFF"
+    text_color = "black"
     chat_bg = "#F1F1F1"
 
 st.markdown(f"""
 <style>
 
 .stApp {{
-    background-color: {bg};
-    color: {text};
+    background-color: {bg_color};
+    color: {text_color};
 }}
 
 .chat-box {{
@@ -91,17 +95,21 @@ st.markdown(f"""
 # ==============================
 
 st.title("🎤 Voice AI Assistant")
-st.write("Groq + Whisper + Streamlit")
+st.write("Powered by Groq + Whisper + Streamlit")
 
 # ==============================
-# API CLIENTS
+# API KEYS
 # ==============================
 
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("Missing GROQ_API_KEY")
+    st.error("❌ GROQ_API_KEY not found")
     st.stop()
+
+# ==============================
+# CLIENTS
+# ==============================
 
 client = Groq(api_key=groq_api_key)
 
@@ -111,23 +119,29 @@ whisper_client = OpenAI(
 )
 
 # ==============================
-# SESSION
+# SESSION STATES
 # ==============================
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
+if "voice_prompt" not in st.session_state:
+    st.session_state.voice_prompt = ""
+
+if "last_audio_id" not in st.session_state:
+    st.session_state.last_audio_id = None
+
 # ==============================
-# DISPLAY CHATS
+# DISPLAY CHAT HISTORY
 # ==============================
 
-for msg in st.session_state.messages:
+for message in st.session_state.messages:
 
-    role = "🧑 You" if msg["role"] == "user" else "🤖 AI"
+    role = "🧑 You" if message["role"] == "user" else "🤖 AI"
 
     css_class = (
         "user-chat"
-        if msg["role"] == "user"
+        if message["role"] == "user"
         else "ai-chat"
     )
 
@@ -135,64 +149,72 @@ for msg in st.session_state.messages:
         f"""
         <div class="chat-box {css_class}">
             <b>{role}:</b><br>
-            {msg["content"]}
+            {message["content"]}
         </div>
         """,
         unsafe_allow_html=True
     )
 
 # ==============================
-# VOICE RECORDING
+# VOICE ASSISTANT
 # ==============================
 
 st.subheader("🎙 Voice Assistant")
+
+voice_text = None
 
 audio = mic_recorder(
     start_prompt="🎤 Start Recording",
     stop_prompt="⏹ Stop Recording",
     just_once=True,
     use_container_width=True,
-    key="voice"
+    key=f"voice_{len(st.session_state.messages)}"
 )
 
-voice_text = None
-
 # ==============================
-# SPEECH TO TEXT
+# PROCESS AUDIO ONLY ONCE
 # ==============================
 
 if audio:
 
-    try:
+    current_audio_id = audio["id"]
 
-        audio_bytes = audio["bytes"]
+    # Avoid repeated processing
+    if current_audio_id != st.session_state.last_audio_id:
 
-        # Save as webm
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".webm"
-        ) as temp_audio:
+        st.session_state.last_audio_id = current_audio_id
 
-            temp_audio.write(audio_bytes)
+        try:
 
-            temp_audio_path = temp_audio.name
+            audio_bytes = audio["bytes"]
 
-        # Transcribe using Groq Whisper
-        with open(temp_audio_path, "rb") as audio_file:
+            # Save temp audio
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".webm"
+            ) as temp_audio:
 
-            transcript = whisper_client.audio.transcriptions.create(
-                file=("audio.webm", audio_file, "audio/webm"),
-                model="whisper-large-v3",
-                response_format="json"
-            )
+                temp_audio.write(audio_bytes)
 
-        voice_text = transcript.text
+                temp_audio_path = temp_audio.name
 
-        st.success(f"🗣 You Said: {voice_text}")
+            # Whisper Speech-to-Text
+            with open(temp_audio_path, "rb") as audio_file:
 
-    except Exception as e:
+                transcript = whisper_client.audio.transcriptions.create(
+                    file=("audio.webm", audio_file, "audio/webm"),
+                    model="whisper-large-v3"
+                )
 
-        st.error(f"Speech Conversion Error: {e}")
+            voice_text = transcript.text
+
+            st.success(f"🗣 You Said: {voice_text}")
+
+            st.session_state.voice_prompt = voice_text
+
+        except Exception as e:
+
+            st.error(f"Speech Conversion Error: {e}")
 
 # ==============================
 # TEXT INPUT
@@ -201,21 +223,31 @@ if audio:
 text_input = st.chat_input("Type your message...")
 
 # ==============================
-# FINAL INPUT
+# FINAL USER INPUT
 # ==============================
 
-user_input = text_input
+user_input = None
 
-if voice_text:
-    user_input = voice_text
+# Text Input Priority
+if text_input:
+
+    user_input = text_input
+
+# Voice Input
+elif st.session_state.voice_prompt:
+
+    user_input = st.session_state.voice_prompt
+
+    # Clear after single use
+    st.session_state.voice_prompt = ""
 
 # ==============================
-# AI CHAT
+# PROCESS CHAT
 # ==============================
 
 if user_input:
 
-    # Save user message
+    # Save User Message
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
@@ -223,6 +255,7 @@ if user_input:
 
     save_chat("user", user_input)
 
+    # Display User Message
     st.markdown(
         f"""
         <div class="chat-box user-chat">
@@ -233,67 +266,80 @@ if user_input:
         unsafe_allow_html=True
     )
 
-    # AI Response
-    with st.spinner("🤖 Thinking..."):
+    # ==============================
+    # AI RESPONSE
+    # ==============================
 
-        response = client.chat.completions.create(
-            model=model,
-            temperature=temperature,
-            messages=st.session_state.messages,
-            stream=True
-        )
+    with st.spinner("🤖 AI is thinking..."):
 
-        full_response = ""
+        try:
 
-        placeholder = st.empty()
+            response = client.chat.completions.create(
+                model=model,
+                temperature=temperature,
+                messages=st.session_state.messages,
+                stream=True
+            )
 
-        for chunk in response:
+            full_response = ""
 
-            if chunk.choices[0].delta.content:
+            response_placeholder = st.empty()
 
-                full_response += chunk.choices[0].delta.content
+            for chunk in response:
 
-                placeholder.markdown(
-                    f"""
-                    <div class="chat-box ai-chat">
-                        <b>🤖 AI:</b><br>
-                        {full_response}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
+                if chunk.choices[0].delta.content:
+
+                    full_response += chunk.choices[0].delta.content
+
+                    response_placeholder.markdown(
+                        f"""
+                        <div class="chat-box ai-chat">
+                            <b>🤖 AI:</b><br>
+                            {full_response}
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+            # Save AI Message
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": full_response
+            })
+
+            save_chat("assistant", full_response)
+
+            # ==============================
+            # AI VOICE RESPONSE
+            # ==============================
+
+            try:
+
+                tts = gTTS(
+                    text=full_response,
+                    lang="en"
                 )
 
-    # Save AI response
-    st.session_state.messages.append({
-        "role": "assistant",
-        "content": full_response
-    })
+                tts.save("response.mp3")
 
-    save_chat("assistant", full_response)
+                with open("response.mp3", "rb") as audio_file:
 
-    # ==============================
-    # AI VOICE OUTPUT
-    # ==============================
+                    audio_bytes = audio_file.read()
 
-    try:
+                st.audio(
+                    audio_bytes,
+                    format="audio/mp3"
+                )
 
-        tts = gTTS(
-            text=full_response,
-            lang="en"
-        )
+            except Exception as audio_error:
 
-        tts.save("response.mp3")
+                st.warning(
+                    f"Voice Output Error: {audio_error}"
+                )
 
-        audio_file = open("response.mp3", "rb")
+        except Exception as e:
 
-        st.audio(
-            audio_file.read(),
-            format="audio/mp3"
-        )
-
-    except Exception as e:
-
-        st.warning(f"Voice Output Error: {e}")
+            st.error(f"AI Response Error: {e}")
 
 # ==============================
 # EXPORT CHAT
