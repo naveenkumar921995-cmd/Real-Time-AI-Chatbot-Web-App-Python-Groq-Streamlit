@@ -2,8 +2,5 @@ streamlit
 groq
 python-dotenv
 streamlit-mic-recorder
-SpeechRecognition
 gtts
-pydub
-ffmpeg-python
 bcrypt
