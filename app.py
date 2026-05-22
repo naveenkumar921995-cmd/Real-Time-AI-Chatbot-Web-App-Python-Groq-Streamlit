@@ -1,140 +1,237 @@
+# ==============================
+# app.py
+# ==============================
+
 import streamlit as st
 from groq import Groq
 import os
+from dotenv import load_dotenv
 
-# =========================
+# Components
+from components.sidebar import sidebar_settings
+from components.voice import voice_input
+from components.auth import login
+from components.database import save_chat
+from components.export_chat import export_chat
+
+# ==============================
+# LOAD ENV
+# ==============================
+
+load_dotenv()
+
+# ==============================
 # PAGE CONFIG
-# =========================
+# ==============================
+
 st.set_page_config(
-    page_title="AI Chatbot",
+    page_title="Advanced AI Chatbot",
     page_icon="🤖",
-    layout="centered"
+    layout="wide"
 )
 
-# =========================
-# CUSTOM CSS
-# =========================
-st.markdown("""
+# ==============================
+# LOGIN SYSTEM
+# ==============================
+
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
+
+login()
+
+if not st.session_state.logged_in:
+    st.stop()
+
+# ==============================
+# SIDEBAR SETTINGS
+# ==============================
+
+model, temperature, dark_mode = sidebar_settings()
+
+# ==============================
+# DARK/LIGHT MODE
+# ==============================
+
+if dark_mode:
+    bg_color = "#0E1117"
+    text_color = "white"
+    chat_bg = "#1E1E1E"
+else:
+    bg_color = "white"
+    text_color = "black"
+    chat_bg = "#F1F1F1"
+
+st.markdown(f"""
 <style>
 
-.stTextInput > div > div > input {
-    font-size: 18px;
-}
+.stApp {{
+    background-color: {bg_color};
+    color: {text_color};
+}}
 
-.chat-box {
+.chat-box {{
     padding: 15px;
-    border-radius: 10px;
+    border-radius: 12px;
     margin-bottom: 10px;
-    color: white;
-}
+    background-color: {chat_bg};
+}}
 
-.user-chat {
-    background-color: #1f1f1f;
-}
+.user-chat {{
+    border-left: 5px solid #4CAF50;
+}}
 
-.ai-chat {
-    background-color: #2b2b2b;
-}
+.ai-chat {{
+    border-left: 5px solid #2196F3;
+}}
 
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
+# ==============================
 # TITLE
-# =========================
-st.title("🤖 AI Chatbot")
+# ==============================
+
+st.title("🤖 Advanced AI Chatbot")
 st.write("Powered by Groq + Streamlit")
 
-# =========================
-# API KEY
-# =========================
+# ==============================
+# GROQ API
+# ==============================
+
 groq_api_key = os.getenv("GROQ_API_KEY")
 
 if not groq_api_key:
-    st.error("Please set GROQ_API_KEY in Streamlit Secrets or Environment Variables.")
+    st.error("Groq API Key not found")
     st.stop()
 
-# =========================
-# GROQ CLIENT
-# =========================
 client = Groq(api_key=groq_api_key)
 
-# =========================
-# SESSION STATE
-# =========================
+# ==============================
+# SESSION MEMORY
+# ==============================
+
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# =========================
+# ==============================
+# FILE UPLOAD
+# ==============================
+
+uploaded_file = st.file_uploader(
+    "📂 Upload File",
+    type=["txt", "pdf", "docx"]
+)
+
+if uploaded_file:
+    st.success(f"Uploaded: {uploaded_file.name}")
+
+# ==============================
+# VOICE INPUT
+# ==============================
+
+voice = voice_input()
+
+# ==============================
 # DISPLAY CHAT HISTORY
-# =========================
+# ==============================
+
 for message in st.session_state.messages:
 
     if message["role"] == "user":
+
         st.markdown(
             f"""
             <div class="chat-box user-chat">
-                <b>You:</b> {message["content"]}
+                <b>🧑 You:</b><br>
+                {message["content"]}
             </div>
             """,
             unsafe_allow_html=True
         )
 
     else:
+
         st.markdown(
             f"""
             <div class="chat-box ai-chat">
-                <b>AI:</b> {message["content"]}
+                <b>🤖 AI:</b><br>
+                {message["content"]}
             </div>
             """,
             unsafe_allow_html=True
         )
 
-# =========================
+# ==============================
 # USER INPUT
-# =========================
+# ==============================
+
 user_input = st.chat_input("Type your message...")
+
+# ==============================
+# PROCESS CHAT
+# ==============================
 
 if user_input:
 
-    # Save user message
+    # Save User Message
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
     })
 
-    # Display user message
+    save_chat("user", user_input)
+
+    # Display User Message
     st.markdown(
         f"""
         <div class="chat-box user-chat">
-            <b>You:</b> {user_input}
+            <b>🧑 You:</b><br>
+            {user_input}
         </div>
         """,
         unsafe_allow_html=True
     )
 
-    # Generate AI Response
-    with st.spinner("Thinking..."):
+    # AI Streaming Response
+    with st.spinner("🤖 AI is typing..."):
 
         response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=st.session_state.messages
+            model=model,
+            temperature=temperature,
+            messages=st.session_state.messages,
+            stream=True
         )
 
-        answer = response.choices[0].message.content
+        full_response = ""
 
-    # Save AI response
+        response_placeholder = st.empty()
+
+        for chunk in response:
+
+            if chunk.choices[0].delta.content:
+
+                full_response += chunk.choices[0].delta.content
+
+                response_placeholder.markdown(
+                    f"""
+                    <div class="chat-box ai-chat">
+                        <b>🤖 AI:</b><br>
+                        {full_response}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+
+    # Save AI Response
     st.session_state.messages.append({
         "role": "assistant",
-        "content": answer
+        "content": full_response
     })
 
-    # Display AI response
-    st.markdown(
-        f"""
-        <div class="chat-box ai-chat">
-            <b>AI:</b> {answer}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
+    save_chat("assistant", full_response)
+
+# ==============================
+# EXPORT CHAT
+# ==============================
+
+export_chat(st.session_state.messages)
