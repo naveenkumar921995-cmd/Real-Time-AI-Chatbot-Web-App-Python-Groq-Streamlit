@@ -1,11 +1,15 @@
+# ==============================
+# components/sidebar.py
+# ==============================
+
 import streamlit as st
 
 def sidebar_settings():
 
-    st.sidebar.title("⚙ Settings")
+    st.sidebar.title("⚙️ Settings")
 
     model = st.sidebar.selectbox(
-        "Choose AI Model",
+        "Choose Model",
         [
             "llama-3.3-70b-versatile",
             "mixtral-8x7b-32768",
@@ -20,6 +24,6 @@ def sidebar_settings():
         0.7
     )
 
-    dark_mode = st.sidebar.toggle("Dark Mode")
+    dark_mode = st.sidebar.toggle("🌙 Dark Mode")
 
     return model, temperature, dark_mode
