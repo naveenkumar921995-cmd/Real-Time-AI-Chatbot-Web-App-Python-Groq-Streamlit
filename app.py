@@ -1,28 +1,25 @@
-# ==============================
-# app.py
-# ==============================
-
 import streamlit as st
 from groq import Groq
 import os
 from dotenv import load_dotenv
+import speech_recognition as sr
+import tempfile
 
 # Components
 from components.sidebar import sidebar_settings
-from components.voice import voice_input
 from components.auth import login
 from components.database import save_chat
 from components.export_chat import export_chat
 
-# ==============================
+# =========================
 # LOAD ENV
-# ==============================
+# =========================
 
 load_dotenv()
 
-# ==============================
+# =========================
 # PAGE CONFIG
-# ==============================
+# =========================
 
 st.set_page_config(
     page_title="Advanced AI Chatbot",
@@ -30,9 +27,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# ==============================
-# LOGIN SYSTEM
-# ==============================
+# =========================
+# LOGIN
+# =========================
 
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
@@ -42,138 +39,150 @@ login()
 if not st.session_state.logged_in:
     st.stop()
 
-# ==============================
-# SIDEBAR SETTINGS
-# ==============================
+# =========================
+# SIDEBAR
+# =========================
 
 model, temperature, dark_mode = sidebar_settings()
 
-# ==============================
-# DARK/LIGHT MODE
-# ==============================
+# =========================
+# DARK MODE
+# =========================
 
 if dark_mode:
-    bg_color = "#0E1117"
-    text_color = "white"
-    chat_bg = "#1E1E1E"
+    bg = "#0E1117"
+    text = "white"
 else:
-    bg_color = "white"
-    text_color = "black"
-    chat_bg = "#F1F1F1"
+    bg = "white"
+    text = "black"
 
 st.markdown(f"""
 <style>
-
 .stApp {{
-    background-color: {bg_color};
-    color: {text_color};
+    background-color: {bg};
+    color: {text};
 }}
-
 .chat-box {{
     padding: 15px;
-    border-radius: 12px;
+    border-radius: 10px;
     margin-bottom: 10px;
-    background-color: {chat_bg};
+    background-color: #1E1E1E;
+    color: white;
 }}
-
-.user-chat {{
-    border-left: 5px solid #4CAF50;
-}}
-
-.ai-chat {{
-    border-left: 5px solid #2196F3;
-}}
-
 </style>
 """, unsafe_allow_html=True)
 
-# ==============================
+# =========================
 # TITLE
-# ==============================
+# =========================
 
 st.title("🤖 Advanced AI Chatbot")
-st.write("Powered by Groq + Streamlit")
 
-# ==============================
-# GROQ API
-# ==============================
+# =========================
+# GROQ CLIENT
+# =========================
 
 groq_api_key = os.getenv("GROQ_API_KEY")
 
-if not groq_api_key:
-    st.error("Groq API Key not found")
-    st.stop()
-
 client = Groq(api_key=groq_api_key)
 
-# ==============================
-# SESSION MEMORY
-# ==============================
+# =========================
+# SESSION STATE
+# =========================
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# ==============================
+# =========================
 # FILE UPLOAD
-# ==============================
+# =========================
 
 uploaded_file = st.file_uploader(
-    "📂 Upload File",
-    type=["txt", "pdf", "docx"]
+    "📂 Upload Text File",
+    type=["txt"]
 )
 
 if uploaded_file:
-    st.success(f"Uploaded: {uploaded_file.name}")
 
-# ==============================
+    file_text = uploaded_file.read().decode("utf-8")
+
+    st.success("File Uploaded Successfully")
+
+    st.text_area(
+        "📄 File Content",
+        file_text,
+        height=200
+    )
+
+# =========================
 # VOICE INPUT
-# ==============================
+# =========================
 
-voice = voice_input()
+audio_file = st.file_uploader(
+    "🎤 Upload Voice File",
+    type=["wav"]
+)
 
-# ==============================
-# DISPLAY CHAT HISTORY
-# ==============================
+voice_text = ""
+
+if audio_file:
+
+    recognizer = sr.Recognizer()
+
+    with tempfile.NamedTemporaryFile(delete=False) as temp_audio:
+
+        temp_audio.write(audio_file.read())
+
+        temp_audio_path = temp_audio.name
+
+    with sr.AudioFile(temp_audio_path) as source:
+
+        audio_data = recognizer.record(source)
+
+        try:
+            voice_text = recognizer.recognize_google(audio_data)
+
+            st.success("Voice Converted to Text")
+
+            st.write(voice_text)
+
+        except:
+            st.error("Could not recognize voice")
+
+# =========================
+# DISPLAY CHAT
+# =========================
 
 for message in st.session_state.messages:
 
-    if message["role"] == "user":
+    role = "🧑 You" if message["role"] == "user" else "🤖 AI"
 
-        st.markdown(
-            f"""
-            <div class="chat-box user-chat">
-                <b>🧑 You:</b><br>
-                {message["content"]}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+    st.markdown(
+        f"""
+        <div class="chat-box">
+        <b>{role}:</b><br>
+        {message["content"]}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
-    else:
-
-        st.markdown(
-            f"""
-            <div class="chat-box ai-chat">
-                <b>🤖 AI:</b><br>
-                {message["content"]}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-# ==============================
+# =========================
 # USER INPUT
-# ==============================
+# =========================
 
 user_input = st.chat_input("Type your message...")
 
-# ==============================
-# PROCESS CHAT
-# ==============================
+# Voice input priority
+if voice_text:
+    user_input = voice_text
+
+# =========================
+# AI RESPONSE
+# =========================
 
 if user_input:
 
-    # Save User Message
     st.session_state.messages.append({
         "role": "user",
         "content": user_input
@@ -181,19 +190,7 @@ if user_input:
 
     save_chat("user", user_input)
 
-    # Display User Message
-    st.markdown(
-        f"""
-        <div class="chat-box user-chat">
-            <b>🧑 You:</b><br>
-            {user_input}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    # AI Streaming Response
-    with st.spinner("🤖 AI is typing..."):
+    with st.spinner("🤖 Thinking..."):
 
         response = client.chat.completions.create(
             model=model,
@@ -214,15 +211,14 @@ if user_input:
 
                 response_placeholder.markdown(
                     f"""
-                    <div class="chat-box ai-chat">
-                        <b>🤖 AI:</b><br>
-                        {full_response}
+                    <div class="chat-box">
+                    <b>🤖 AI:</b><br>
+                    {full_response}
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
 
-    # Save AI Response
     st.session_state.messages.append({
         "role": "assistant",
         "content": full_response
@@ -230,8 +226,8 @@ if user_input:
 
     save_chat("assistant", full_response)
 
-# ==============================
+# =========================
 # EXPORT CHAT
-# ==============================
+# =========================
 
 export_chat(st.session_state.messages)
