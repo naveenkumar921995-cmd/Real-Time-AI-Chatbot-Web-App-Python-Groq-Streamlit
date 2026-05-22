@@ -121,21 +121,25 @@ import tempfile
 import speech_recognition as sr
 
 # =========================
-# LIVE MIC INPUT
+# LIVE VOICE ASSISTANT
 # =========================
 
-st.subheader("🎤 Speak with AI")
+from streamlit_mic_recorder import speech_to_text
 
-audio = mic_recorder(
-    start_prompt="🎙 Start Recording",
-    stop_prompt="⏹ Stop Recording",
+st.subheader("🎤 Voice Assistant")
+
+voice_text = speech_to_text(
+    language='en',
+    start_prompt="🎙 Start",
+    stop_prompt="⏹ Stop",
     just_once=True,
     use_container_width=True,
-    key="voice"
+    key='STT'
 )
 
-voice_text = ""
+if voice_text:
 
+    st.success(f"🗣 You Said: {voice_text}")
 # =========================
 # WEBM → WAV CONVERSION
 # =========================
