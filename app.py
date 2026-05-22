@@ -145,20 +145,51 @@ for message in st.session_state.messages:
 
 st.subheader("🎙 Voice Assistant")
 
-voice_text = speech_to_text(
-    language='en',
+audio = mic_recorder(
     start_prompt="🎤 Start Recording",
     stop_prompt="⏹ Stop Recording",
     just_once=True,
     use_container_width=True,
-    key='voice-input'
+    key="voice-recorder"
 )
 
-# Save Voice Text
-if voice_text:
-    st.session_state.voice_prompt = voice_text
-    st.success(f"🗣 You Said: {voice_text}")
+voice_text = None
 
+if audio:
+
+    try:
+
+        # Save audio temporarily
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".wav"
+        ) as temp_audio:
+
+            temp_audio.write(audio["bytes"])
+
+            temp_audio_path = temp_audio.name
+
+        # Groq Whisper Client
+        whisper_client = OpenAI(
+            api_key=os.getenv("GROQ_API_KEY"),
+            base_url="https://api.groq.com/openai/v1"
+        )
+
+        # Speech To Text
+        with open(temp_audio_path, "rb") as file:
+
+            transcription = whisper_client.audio.transcriptions.create(
+                file=file,
+                model="whisper-large-v3"
+            )
+
+        voice_text = transcription.text
+
+        st.success(f"🗣 You Said: {voice_text}")
+
+    except Exception as e:
+
+        st.error(f"Voice Error: {e}")
 # ==============================
 # TEXT INPUT
 # ==============================
