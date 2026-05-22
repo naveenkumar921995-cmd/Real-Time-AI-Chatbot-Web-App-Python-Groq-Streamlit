@@ -1,2 +1,9 @@
 streamlit
 groq
+streamlit-option-menu
+streamlit-mic-recorder
+gtts
+SpeechRecognition
+pydub
+python-dotenv
+bcrypt
