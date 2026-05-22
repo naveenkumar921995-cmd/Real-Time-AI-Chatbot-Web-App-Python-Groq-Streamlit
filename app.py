@@ -116,6 +116,10 @@ for msg in st.session_state.messages:
         unsafe_allow_html=True
     )
 
+from pydub import AudioSegment
+import tempfile
+import speech_recognition as sr
+
 # =========================
 # LIVE MIC INPUT
 # =========================
@@ -132,6 +136,43 @@ audio = mic_recorder(
 
 voice_text = ""
 
+# =========================
+# WEBM → WAV CONVERSION
+# =========================
+
+if audio:
+
+    recognizer = sr.Recognizer()
+
+    audio_bytes = audio["bytes"]
+
+    # Save WEBM
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
+
+        temp_webm.write(audio_bytes)
+
+        webm_path = temp_webm.name
+
+    # Convert WEBM → WAV
+    wav_path = webm_path.replace(".webm", ".wav")
+
+    sound = AudioSegment.from_file(webm_path, format="webm")
+
+    sound.export(wav_path, format="wav")
+
+    try:
+
+        with sr.AudioFile(wav_path) as source:
+
+            audio_data = recognizer.record(source)
+
+            voice_text = recognizer.recognize_google(audio_data)
+
+            st.success(f"🗣 You Said: {voice_text}")
+
+    except Exception as e:
+
+        st.error(f"Speech Recognition Error: {e}")
 # =========================
 # SPEECH TO TEXT
 # =========================
