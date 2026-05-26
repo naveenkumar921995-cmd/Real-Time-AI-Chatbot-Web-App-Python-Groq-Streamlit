@@ -10,7 +10,6 @@ from datetime import datetime
 
 # Components
 from components.sidebar import sidebar_settings
-from components.auth import login
 from components.database import save_chat
 from components.export_chat import export_chat
 
@@ -30,18 +29,6 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
-
-# ==============================
-# LOGIN SYSTEM
-# ==============================
-
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-login()
-
-if not st.session_state.logged_in:
-    st.stop()
 
 # ==============================
 # SIDEBAR SETTINGS
